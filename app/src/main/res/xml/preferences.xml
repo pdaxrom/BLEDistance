@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.preference.PreferenceScreen
+    xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <PreferenceCategory android:title="@string/cat_distance">
+        <EditTextPreference
+            android:defaultValue=""
+            android:key="remote_node"
+            android:selectAllOnFocus="true"
+            android:singleLine="false"
+            android:title="@string/alert_level"/>
+    </PreferenceCategory>
+</androidx.preference.PreferenceScreen>

@@ -3,4 +3,18 @@
     <string name="ble_uuid">4666cb56-9525-4387-bb72-4f5fe938f3a4</string>
     <string name="ble_multiadvert_error">Multiple advertisement not supported!</string>
     <string name="ble_discovering_stopped">Discovering stopped!</string>
+    <string name="app_version">Version:</string>
+    <string name="about_text"><![CDATA[(c) sashz <sashz@pdaXrom.org, 2020]]></string>
+    <string name="we_care">BIG BROTHER IS WATCHING YOU</string>
+    <string name="start">START</string>
+    <string name="stop">STOP</string>
+    <string name="started">BLE Service started</string>
+    <string name="stopped">Service stopped!</string>
+    <string name="go_button">Start</string>
+    <string name="art">Art</string>
+    <string name="title_home">Home</string>
+    <string name="settings_page">Settings</string>
+    <string name="about">About</string>
+    <string name="cat_distance">Distance</string>
+    <string name="alert_level">Alert level</string>
 </resources>
