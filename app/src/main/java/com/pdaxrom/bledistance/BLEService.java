@@ -126,24 +126,11 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
     private ScanCallback leScanCallback = new ScanCallback() {
         @Override
         public void onScanResult(int callbackType, ScanResult result) {
-//            Log.i(TAG, "ScanCallback " + result.getDevice().getAddress() + " " + BluetoothAdapter.getDefaultAdapter().getAddress());
-//
-//            if (btAdapter.getAddress().equals(result.getDevice().getAddress())) {
-//                return;
-//            }
 
             Log.i(TAG, "Device address: " + result.getDevice().getAddress() + " rssi: " + result.getRssi());
             sendStatus((result.getRssi() > alert_level) ? ConnectFragment.SRVS_ALERT : ConnectFragment.SRVS_MESSAGE, "Device Address: "
                     + result.getDevice().getAddress()
                     + " rssi: " + result.getRssi());
-//FIXME:
-//            peripheralTextView.append("Device Name: " + result.getDevice().getName() + " rssi: " + result.getRssi() + "\n");
-
-            // auto scroll for text view
-//            final int scrollAmount = peripheralTextView.getLayout().getLineTop(peripheralTextView.getLineCount()) - peripheralTextView.getHeight();
-            // if there is no need to scroll, scrollAmount will be <=0
-//            if (scrollAmount > 0)
-//                peripheralTextView.scrollTo(0, scrollAmount);
         }
     };
 
@@ -161,20 +148,15 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .build();
 
-//FIXME:
-//        peripheralTextView.setText("");
         AsyncTask.execute(new Runnable() {
             @Override
             public void run() {
                 btScanner.startScan(filters, settings, leScanCallback);
-//                btScanner.startScan(leScanCallback);
             }
         });
     }
 
     public void stopScanning() {
-//        System.out.println("stopping scanning");
-//        peripheralTextView.append("Stopped Scanning");
         AsyncTask.execute(new Runnable() {
             @Override
             public void run() {
@@ -222,9 +204,7 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
     @Override
     public boolean handleMessage(Message message) {
         Toast.makeText(this, message.what, Toast.LENGTH_SHORT).show();
-//        if (message.what != R.string.disconnected) {
-            updateForegroundNotification(message.what);
-//        }
+        updateForegroundNotification(message.what);
         return true;
     }
 

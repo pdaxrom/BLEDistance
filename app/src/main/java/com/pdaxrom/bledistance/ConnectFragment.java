@@ -5,70 +5,44 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.SharedPreferences;
-import android.content.res.AssetManager;
-import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.media.MediaPlayer;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
-import android.util.Base64;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.fragment.app.Fragment;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
-import androidx.preference.PreferenceManager;
 
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-
-import static android.app.Activity.RESULT_OK;
 import static android.content.Context.ACTIVITY_SERVICE;
 
 public class ConnectFragment extends Fragment implements View.OnClickListener {
     private static final String TAG = "ConnectFragment";
-    public interface Prefs {
-        String NAME = "settingsPrefs";
-        String ALERT_LEVEL = "ALERT_LEVEL";
-    }
 
     public static final String MSG_SRVS_FILTER = "com.pdaxrom.bledistance.ConnectFragment";
     public static final String MSG_SRVS_STATUS = "STATUS";
     public static final String MSG_SRVS_MESSAGE = "MESSAGE";
-    public static final String MSG_SRVS_START_TIME = "START_TIME";
 
     public static final int SRVS_STOPPED = 0;
     public static final int SRVS_STARTED = 1;
     public static final int SRVS_MESSAGE = 2;
     public static final int SRVS_ALERT = 3;
 
-    private static final String remoteConfigName = "remote";
-
-    private final static int BUFFER_SIZE = 1024;
     private Button btn;
     private TextView tv;
     private TextView log;
 
-//    private ImageView artImageView;
-
     boolean isActive;
 
-    AudioPlayer player = new AudioPlayer();
+    private final AudioPlayer player = new AudioPlayer();
 
-    private class AudioPlayer {
+    private static class AudioPlayer {
         private MediaPlayer mMediaPlayer;
 
         public void stop() {
@@ -82,12 +56,7 @@ public class ConnectFragment extends Fragment implements View.OnClickListener {
             stop();
 
             mMediaPlayer = MediaPlayer.create(c, rid);
-            mMediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-                @Override
-                public void onCompletion(MediaPlayer mediaPlayer) {
-                    stop();
-                }
-            });
+            mMediaPlayer.setOnCompletionListener(mediaPlayer -> stop());
 
             mMediaPlayer.start();
         }
@@ -176,9 +145,6 @@ public class ConnectFragment extends Fragment implements View.OnClickListener {
     public void setMenuVisibility(final boolean visible) {
         super.setMenuVisibility(visible);
 
-        if (visible && getActivity() != null) {
-//            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getActivity());
-        }
         Log.i(TAG, "VISIBLE " + visible);
     }
 
