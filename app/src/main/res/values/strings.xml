@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">BLE Distance</string>
+    <string name="ble_uuid">4666cb56-9525-4387-bb72-4f5fe938f3a4</string>
+    <string name="ble_multiadvert_error">Multiple advertisement not supported!</string>
+    <string name="ble_discovering_stopped">Discovering stopped!</string>
+</resources>
