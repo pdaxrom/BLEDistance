@@ -1,6 +1,18 @@
 package com.pdaxrom.bledistance;
 
 import android.app.Service;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothManager;
+import android.bluetooth.le.AdvertiseCallback;
+import android.bluetooth.le.AdvertiseData;
+import android.bluetooth.le.AdvertiseSettings;
+import android.bluetooth.le.BluetoothLeAdvertiser;
+import android.bluetooth.le.BluetoothLeScanner;
+import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanFilter;
+import android.bluetooth.le.ScanResult;
+import android.bluetooth.le.ScanSettings;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -14,6 +26,8 @@ import androidx.viewpager.widget.ViewPager;
 import android.content.Context;
 import android.content.IntentFilter;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+
+import android.os.ParcelUuid;
 import android.widget.Toast;
 import android.content.SharedPreferences;
 import androidx.preference.PreferenceManager;
@@ -26,7 +40,10 @@ import android.net.NetworkInfo;
 import android.util.Log;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
+import java.util.UUID;
 
 public class BLEService extends Service implements Runnable, Handler.Callback {
     private static final String TAG = "BLEService";
@@ -36,40 +53,17 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
     public static final String MSG_SRVS_FILTER = "com.pdaxrom.bledistance.BLEService";
     public static final String MSG_SRVS_STATUS = "STATUS";
 
-    public interface ClientStatus {
-        int NOERROR = 0;
-        int BAD_CONFIG = 1;
-        int NO_KEY = 2;
-        int BAD_KEY = 3;
-        int CONNECTION_ERROR = 4;
-        int CONNECTION_REJECTED = 5;
-        int CONNECTION_NOAUTH = 6;
-        int CONFIGURATION_ERROR = 7;
-        int UPDATING_NODELIST = 8;
-        int UPDATING_BENCHMARKS = 9;
-        int CONNECTING_TO_SERVER = 10;
-        int WAITING_FOR_SERVER = 11;
-    }
-
-    private String mConfigFile;
-    private String mCacheDir;
-    private String mHexKey;
-    private boolean mReconnectNoBenchmark;
-    private String mRemoteNode;
-
-    private int mClientStatus;
-
-    private Thread mThread;
-    private boolean mQuit;
-    private ParcelFileDescriptor mInterface;
-
     private BroadcastReceiver bReceiv;
 
     private int connStatus;
     private String connMessage;
-    private long connStartTime;
 
     private Handler mHandler;
+
+    BluetoothManager btManager;
+    BluetoothAdapter btAdapter;
+    BluetoothLeScanner btScanner;
+    BluetoothLeAdvertiser btAdvertiser;
 
     @Override
     public void onCreate() {
@@ -77,6 +71,11 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
         if (mHandler == null) {
             mHandler = new Handler(this);
         }
+
+        btManager = (BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE);
+        btAdapter = btManager.getAdapter();
+        btScanner = btAdapter.getBluetoothLeScanner();
+        btAdvertiser = btAdapter.getBluetoothLeAdvertiser();
 
         bReceiv = new BroadcastReceiver() {
             @Override
@@ -121,6 +120,100 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
         return null;
     }
 
+    // Device scan callback.
+    private ScanCallback leScanCallback = new ScanCallback() {
+        @Override
+        public void onScanResult(int callbackType, ScanResult result) {
+//            Log.i(TAG, "ScanCallback " + result.getDevice().getAddress() + " " + BluetoothAdapter.getDefaultAdapter().getAddress());
+//
+//            if (btAdapter.getAddress().equals(result.getDevice().getAddress())) {
+//                return;
+//            }
+
+            Log.i(TAG, "Device Name: " + result.getDevice().getName() + " rssi: " + result.getRssi());
+//FIXME:
+//            peripheralTextView.append("Device Name: " + result.getDevice().getName() + " rssi: " + result.getRssi() + "\n");
+
+            // auto scroll for text view
+//            final int scrollAmount = peripheralTextView.getLayout().getLineTop(peripheralTextView.getLineCount()) - peripheralTextView.getHeight();
+            // if there is no need to scroll, scrollAmount will be <=0
+//            if (scrollAmount > 0)
+//                peripheralTextView.scrollTo(0, scrollAmount);
+        }
+    };
+
+    public void startScanning() {
+        System.out.println("start scanning");
+
+        List<ScanFilter> filters = new ArrayList<>();
+
+        ScanFilter filter = new ScanFilter.Builder()
+                .setServiceUuid(new ParcelUuid(UUID.fromString(getString(R.string.ble_uuid))))
+                .build();
+        filters.add(filter);
+
+        ScanSettings settings = new ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .build();
+
+//FIXME:
+//        peripheralTextView.setText("");
+        AsyncTask.execute(new Runnable() {
+            @Override
+            public void run() {
+                btScanner.startScan(filters, settings, leScanCallback);
+//                btScanner.startScan(leScanCallback);
+            }
+        });
+    }
+
+    public void stopScanning() {
+//        System.out.println("stopping scanning");
+//        peripheralTextView.append("Stopped Scanning");
+        AsyncTask.execute(new Runnable() {
+            @Override
+            public void run() {
+                btScanner.stopScan(leScanCallback);
+            }
+        });
+    }
+
+    private void startAdvertising() {
+        AdvertiseSettings settings = new AdvertiseSettings.Builder()
+                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+                .setConnectable(false)
+                .build();
+
+        ParcelUuid pUuid = new ParcelUuid(UUID.fromString(getString(R.string.ble_uuid)));
+
+        AdvertiseData data = new AdvertiseData.Builder()
+                .setIncludeDeviceName(false)
+                .addServiceUuid(pUuid)
+//                .addServiceData(pUuid, "Data".getBytes(Charset.forName("UTF-8")))
+                .build();
+
+        btAdvertiser.startAdvertising(settings, data, advertisingCallback);
+    }
+
+    private void stopAdvertising() {
+        btAdvertiser.stopAdvertising(advertisingCallback);
+    }
+
+    AdvertiseCallback advertisingCallback = new AdvertiseCallback() {
+        @Override
+        public void onStartSuccess(AdvertiseSettings settingsInEffect) {
+            super.onStartSuccess(settingsInEffect);
+        }
+
+        @Override
+        public void onStartFailure(int errorCode) {
+            Log.e("BLE", "Advertising onStartFailure: " + errorCode);
+            super.onStartFailure(errorCode);
+        }
+    };
+
+
     @Override
     public boolean handleMessage(Message message) {
         Toast.makeText(this, message.what, Toast.LENGTH_SHORT).show();
@@ -152,10 +245,14 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
     public void startThread() {
         sendStatus(ConnectFragment.SRVS_STARTED, getString(R.string.started));
         updateForegroundNotification(R.string.started);
+        startAdvertising();
+        startScanning();
 //        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplication());
     }
 
     public void stopThread() {
+        stopScanning();
+        stopAdvertising();
         sendStatus(ConnectFragment.SRVS_STOPPED, getString(R.string.stopped));
         updateForegroundNotification(R.string.stopped);
         stopForeground(true);
