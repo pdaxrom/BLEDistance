@@ -60,10 +60,12 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
 
     private Handler mHandler;
 
-    BluetoothManager btManager;
-    BluetoothAdapter btAdapter;
-    BluetoothLeScanner btScanner;
-    BluetoothLeAdvertiser btAdvertiser;
+    private BluetoothManager btManager;
+    private BluetoothAdapter btAdapter;
+    private BluetoothLeScanner btScanner;
+    private BluetoothLeAdvertiser btAdvertiser;
+
+    private int alert_level = -1;
 
     @Override
     public void onCreate() {
@@ -130,7 +132,10 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
 //                return;
 //            }
 
-            Log.i(TAG, "Device Name: " + result.getDevice().getName() + " rssi: " + result.getRssi());
+            Log.i(TAG, "Device address: " + result.getDevice().getAddress() + " rssi: " + result.getRssi());
+            sendStatus((result.getRssi() > alert_level) ? ConnectFragment.SRVS_ALERT : ConnectFragment.SRVS_MESSAGE, "Device Address: "
+                    + result.getDevice().getAddress()
+                    + " rssi: " + result.getRssi());
 //FIXME:
 //            peripheralTextView.append("Device Name: " + result.getDevice().getName() + " rssi: " + result.getRssi() + "\n");
 
@@ -243,11 +248,21 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
     }
 
     public void startThread() {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplication());
+
+        try {
+            alert_level = Integer.parseInt(prefs.getString("alert_level", "-70"));
+        } catch (NumberFormatException e) {
+            alert_level = -70;
+            prefs.edit()
+                    .putString("alert_level", Integer.toString(alert_level))
+                    .apply();
+        }
+
         sendStatus(ConnectFragment.SRVS_STARTED, getString(R.string.started));
         updateForegroundNotification(R.string.started);
         startAdvertising();
         startScanning();
-//        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplication());
     }
 
     public void stopThread() {

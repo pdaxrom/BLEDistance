@@ -7,8 +7,10 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.res.AssetManager;
+import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
+import android.media.MediaPlayer;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
@@ -40,18 +42,8 @@ public class ConnectFragment extends Fragment implements View.OnClickListener {
     private static final String TAG = "ConnectFragment";
     public interface Prefs {
         String NAME = "settingsPrefs";
-        String CONFIG_FILE = "CONFIG_FILE";
-        String CACHE_DIR = "CACHE_DIR";
-//        String UPDATE_NODES = "update_nodes";
-        String FORCE_UPDATE_NODES = "force_update_root_nodes";
-        String RECONNECT_NO_BENCH = "reconnect_no_bench";
+        String ALERT_LEVEL = "ALERT_LEVEL";
     }
-
-    //public static final String CONFIG_URL = "https://raw.githubusercontent.com/lilitun/hexdump/master/dump.txt";
-    public static final String CONFIG_URL64 = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL2xpbGl0dW4vaGV4ZHVtcC9tYXN0ZXIvZHVtcC50eHQ=";
-
-    public static final String DEMO_KEY = "50049165b6321f800087ae9342db82f397ccd94f87a318a560e6cbd8551cbcc1";
-    public static final String REMOTE_NODE = "";
 
     public static final String MSG_SRVS_FILTER = "com.pdaxrom.bledistance.ConnectFragment";
     public static final String MSG_SRVS_STATUS = "STATUS";
@@ -59,24 +51,47 @@ public class ConnectFragment extends Fragment implements View.OnClickListener {
     public static final String MSG_SRVS_START_TIME = "START_TIME";
 
     public static final int SRVS_STOPPED = 0;
-    public static final int SRVS_STOPPING = 1;
-    public static final int SRVS_STARTED = 2;
-    public static final int SRVS_STARTING = 3;
-    public static final int SRVS_INPROGRESS = 4;
-    public static final int SRVS_INUPDATE = 5;
-    //public static final int SRVS_MESSAGE = 6;
+    public static final int SRVS_STARTED = 1;
+    public static final int SRVS_MESSAGE = 2;
+    public static final int SRVS_ALERT = 3;
 
     private static final String remoteConfigName = "remote";
 
     private final static int BUFFER_SIZE = 1024;
     private Button btn;
     private TextView tv;
+    private TextView log;
 
 //    private ImageView artImageView;
 
     boolean isActive;
 
-    private AsyncTask<String, String, String> downloadFileFromURL = null;
+    AudioPlayer player = new AudioPlayer();
+
+    private class AudioPlayer {
+        private MediaPlayer mMediaPlayer;
+
+        public void stop() {
+            if (mMediaPlayer != null) {
+                mMediaPlayer.release();
+                mMediaPlayer = null;
+            }
+        }
+
+        public void play(Context c, int rid) {
+            stop();
+
+            mMediaPlayer = MediaPlayer.create(c, rid);
+            mMediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                @Override
+                public void onCompletion(MediaPlayer mediaPlayer) {
+                    stop();
+                }
+            });
+
+            mMediaPlayer.start();
+        }
+    }
 
     private final BroadcastReceiver onServiceMessage = new BroadcastReceiver() {
         @Override
@@ -85,7 +100,16 @@ public class ConnectFragment extends Fragment implements View.OnClickListener {
             Log.i(TAG, "Message from service = " + status);
             String msg = intent.getStringExtra(MSG_SRVS_MESSAGE);
             if (msg != null) {
-                tv.setText(msg);
+                if (status == SRVS_ALERT) {
+                    player.play(context.getApplicationContext(), R.raw.click);
+//                    log.setTextColor(Color.parseColor("#ff0000"));
+                    log.append("\n!!! " + msg);
+                } else if (status == SRVS_MESSAGE) {
+//                    log.setTextColor(Color.parseColor("#ffffff"));
+                    log.append("\n" + msg);
+                } else {
+                    tv.setText(msg);
+                }
             }
             setStatus(status);
         }
@@ -104,14 +128,16 @@ public class ConnectFragment extends Fragment implements View.OnClickListener {
         tv = rootView.findViewById(R.id.sample_text);
         tv.setText(getString(R.string.we_care));
 
+        log = rootView.findViewById(R.id.log_view);
+        log.setText("");
+
 //        artImageView = rootView.findViewById(R.id.imageView);
 //        changeSaturation(0);
 
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getActivity());
-        prefs.edit()
-            .putString(Prefs.CONFIG_FILE, getActivity().getCacheDir() + "/client-a.cfg")
-            .putString(Prefs.CACHE_DIR, getActivity().getCacheDir().toString())
-            .apply();
+//        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getActivity());
+//        prefs.edit()
+//            .putInt(Prefs.ALERT_LEVEL, -1)
+//            .apply();
 
         return rootView;
     }
@@ -136,9 +162,6 @@ public class ConnectFragment extends Fragment implements View.OnClickListener {
     public void onResume() {
         super.onResume();
         Log.i(TAG, "onResume()");
-        if (downloadFileFromURL != null && downloadFileFromURL.getStatus() == AsyncTask.Status.RUNNING) {
-            return;
-        }
         if (isServiceRunning()) {
             LocalBroadcastManager.getInstance(getActivity().getBaseContext()).sendBroadcast(
                     new Intent(BLEService.MSG_SRVS_FILTER)

@@ -4,8 +4,8 @@
 
     <PreferenceCategory android:title="@string/cat_distance">
         <EditTextPreference
-            android:defaultValue=""
-            android:key="remote_node"
+            android:defaultValue="-70"
+            android:key="alert_level"
             android:selectAllOnFocus="true"
             android:singleLine="false"
             android:title="@string/alert_level"/>
