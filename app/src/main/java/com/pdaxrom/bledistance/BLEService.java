@@ -1,5 +1,13 @@
+/*
+    https://www.ijcaonline.org/research/volume137/number13/jayakody-2016-ijca-909028.pdf
+    https://developer.radiusnetworks.com/2014/12/04/fundamentals-of-beacon-ranging.html
+
+ */
 package com.pdaxrom.bledistance;
 
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
@@ -12,36 +20,27 @@ import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
-import android.content.BroadcastReceiver;
-import android.os.ParcelFileDescriptor;
-import android.content.Intent;
+import android.os.ParcelUuid;
+import android.util.Log;
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
-import androidx.viewpager.widget.ViewPager;
-import android.content.Context;
-import android.content.IntentFilter;
-import androidx.localbroadcastmanager.content.LocalBroadcastManager;
-
-import android.os.ParcelUuid;
-import android.widget.Toast;
-import android.content.SharedPreferences;
-import androidx.preference.PreferenceManager;
 import androidx.core.app.NotificationCompat;
-import android.app.NotificationManager;
-import android.app.NotificationChannel;
-import android.app.PendingIntent;
-import android.net.ConnectivityManager;
-import android.net.NetworkInfo;
-import android.util.Log;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+import androidx.preference.PreferenceManager;
 
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
 
@@ -53,19 +52,19 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
     public static final String MSG_SRVS_FILTER = "com.pdaxrom.bledistance.BLEService";
     public static final String MSG_SRVS_STATUS = "STATUS";
 
-    private BroadcastReceiver bReceiv;
+    private BroadcastReceiver mBcReceiver;
 
-    private int connStatus;
-    private String connMessage;
+    private int mConnStatus;
+    private String mConnMessage;
 
     private Handler mHandler;
 
-    private BluetoothManager btManager;
-    private BluetoothAdapter btAdapter;
-    private BluetoothLeScanner btScanner;
-    private BluetoothLeAdvertiser btAdvertiser;
+    private BluetoothLeScanner mBtScanner;
+    private BluetoothLeAdvertiser mBtAdvertiser;
 
-    private int alert_level = -1;
+    HashMap<String, KalmanFilterSimple> mKalmanFilters = new HashMap<>();
+
+    private int mAlertLevel = -1;
 
     @Override
     public void onCreate() {
@@ -74,22 +73,22 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
             mHandler = new Handler(this);
         }
 
-        btManager = (BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE);
-        btAdapter = btManager.getAdapter();
-        btScanner = btAdapter.getBluetoothLeScanner();
-        btAdvertiser = btAdapter.getBluetoothLeAdvertiser();
+        BluetoothManager btManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        BluetoothAdapter btAdapter = btManager.getAdapter();
+        mBtScanner = btAdapter.getBluetoothLeScanner();
+        mBtAdvertiser = btAdapter.getBluetoothLeAdvertiser();
 
-        bReceiv = new BroadcastReceiver() {
+        mBcReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 boolean status = intent.getBooleanExtra(MSG_SRVS_STATUS, false);
                 Log.i(TAG, "Message from service = " + status);
                 if (status) {
-                    sendStatus(connStatus, connMessage);
+                    sendStatus(mConnStatus, mConnMessage);
                 }
             }
         };
-        LocalBroadcastManager.getInstance(this).registerReceiver(bReceiv, new IntentFilter(MSG_SRVS_FILTER));
+        LocalBroadcastManager.getInstance(this).registerReceiver(mBcReceiver, new IntentFilter(MSG_SRVS_FILTER));
     }
 
     @Override
@@ -112,7 +111,7 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
     @Override
     public void onDestroy() {
         stopThread();
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(bReceiv);
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mBcReceiver);
         super.onDestroy();
     }
 
@@ -123,19 +122,40 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
     }
 
     // Device scan callback.
-    private ScanCallback leScanCallback = new ScanCallback() {
+    private final ScanCallback leScanCallback = new ScanCallback() {
         @Override
         public void onScanResult(int callbackType, ScanResult result) {
+            double smoothValue;
 
-            Log.i(TAG, "Device address: " + result.getDevice().getAddress() + " rssi: " + result.getRssi());
-            sendStatus((result.getRssi() > alert_level) ? ConnectFragment.SRVS_ALERT : ConnectFragment.SRVS_MESSAGE, "Device Address: "
+            if (mKalmanFilters.containsKey(result.getDevice().getAddress())) {
+                KalmanFilterSimple filter = mKalmanFilters.get(result.getDevice().getAddress());
+                smoothValue = filter.getSmooth(result.getRssi());
+            } else {
+                KalmanFilterSimple filter = new KalmanFilterSimple(0.75);
+                smoothValue = filter.getSmooth(result.getRssi());
+                mKalmanFilters.put(result.getDevice().getAddress(), filter);
+            }
+
+            Log.i(TAG, "Device address: " + result.getDevice().getAddress()
+                    + " rssi: " + result.getRssi()
+                    + " rssi smooth: " + smoothValue);
+
+            if (Build.VERSION.SDK_INT >= 26) {
+                //FIXME: unfortunately, looks like it's not working with builtin bluetooth
+                Log.i(TAG, "txPower :" + result.getTxPower());
+            }
+
+            Log.i(TAG, "Approx. Distance : " + calculateDistance(-75, smoothValue));
+
+            sendStatus((result.getRssi() > mAlertLevel) ? ConnectFragment.SRVS_ALERT : ConnectFragment.SRVS_MESSAGE,
+                    "Device Address: "
                     + result.getDevice().getAddress()
-                    + " rssi: " + result.getRssi());
+                    + " rssi: " + smoothValue);
         }
     };
 
     public void startScanning() {
-        System.out.println("start scanning");
+        mKalmanFilters.clear();
 
         List<ScanFilter> filters = new ArrayList<>();
 
@@ -148,21 +168,11 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .build();
 
-        AsyncTask.execute(new Runnable() {
-            @Override
-            public void run() {
-                btScanner.startScan(filters, settings, leScanCallback);
-            }
-        });
+        AsyncTask.execute(() -> mBtScanner.startScan(filters, settings, leScanCallback));
     }
 
     public void stopScanning() {
-        AsyncTask.execute(new Runnable() {
-            @Override
-            public void run() {
-                btScanner.stopScan(leScanCallback);
-            }
-        });
+        AsyncTask.execute(() -> mBtScanner.stopScan(leScanCallback));
     }
 
     private void startAdvertising() {
@@ -180,11 +190,11 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
 //                .addServiceData(pUuid, "Data".getBytes(Charset.forName("UTF-8")))
                 .build();
 
-        btAdvertiser.startAdvertising(settings, data, advertisingCallback);
+        mBtAdvertiser.startAdvertising(settings, data, advertisingCallback);
     }
 
     private void stopAdvertising() {
-        btAdvertiser.stopAdvertising(advertisingCallback);
+        mBtAdvertiser.stopAdvertising(advertisingCallback);
     }
 
     AdvertiseCallback advertisingCallback = new AdvertiseCallback() {
@@ -210,32 +220,24 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
 
     private void sendStatus(int status, String msg) {
         Intent intent = new Intent(ConnectFragment.MSG_SRVS_FILTER);
-        connStatus = status;
+        mConnStatus = status;
         intent.putExtra(ConnectFragment.MSG_SRVS_STATUS, status);
         if (msg != null) {
-            connMessage = msg;
+            mConnMessage = msg;
             intent.putExtra(ConnectFragment.MSG_SRVS_MESSAGE, msg);
         }
         LocalBroadcastManager.getInstance(getBaseContext()).sendBroadcast(intent);
-    }
-
-    private void sendStatus(int status) {
-        sendStatus(status, null);
-    }
-
-    private void sendStatus(String msg) {
-        sendStatus(connStatus, msg);
     }
 
     public void startThread() {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplication());
 
         try {
-            alert_level = Integer.parseInt(prefs.getString("alert_level", "-70"));
+            mAlertLevel = Integer.parseInt(prefs.getString("alert_level", "-70"));
         } catch (NumberFormatException e) {
-            alert_level = -70;
+            mAlertLevel = -70;
             prefs.edit()
-                    .putString("alert_level", Integer.toString(alert_level))
+                    .putString("alert_level", Integer.toString(mAlertLevel))
                     .apply();
         }
 
@@ -282,5 +284,46 @@ public class BLEService extends Service implements Runnable, Handler.Callback {
     @Override
     public void run() {
 
+    }
+
+    /*
+        You can plug these two numbers into a formula to calculate a distance estimate. Below,
+        you can see the formula we created in the Android Beacon Library. The three constants
+        in the formula (0.89976, 7.7095 and 0.111) are based on a best fit curve based on a
+        number of measured signal strengths at various known distances from a Nexus 4.
+        https://developer.radiusnetworks.com/2014/12/04/fundamentals-of-beacon-ranging.html
+     */
+    private static double calculateDistance(int txPower, double rssi) {
+        if (rssi == 0) {
+            return -1.0; // if we cannot determine distance, return -1.
+        }
+
+        double ratio = rssi*1.0/txPower;
+        if (ratio < 1.0) {
+            return Math.pow(ratio,10);
+        } else {
+            double accuracy =  (0.89976)*Math.pow(ratio,7.7095) + 0.111;
+            return accuracy;
+        }
+    }
+
+    private static class KalmanFilterSimple {
+        private final double A;
+        private double RSSIprev = Double.MAX_VALUE;
+
+        public KalmanFilterSimple(double A) {
+            this.A = A;
+        }
+
+        public double getSmooth(double R) {
+            double smooth;
+            if (RSSIprev == Double.MAX_VALUE) {
+                smooth = R;
+            } else {
+                smooth = A * R + (1 - A) * RSSIprev;
+            }
+            RSSIprev = R;
+            return smooth;
+        }
     }
 }
